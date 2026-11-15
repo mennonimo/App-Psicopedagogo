@@ -6,40 +6,81 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import { listarPacientes, salvarSessao } from '../database/db';
+import {
+  listarPacientes,
+  buscarMetasPaciente,
+  buscarPassosPorMeta,
+  alternarPassoTrilha,
+  salvarSessao
+} from '../database/db';
 
-export default function NovaSessaoScreen({ navigation }) {
+export default function NovaSessaoScreen() {
   const [pacientes, setPacientes] = useState([]);
   const [pacienteId, setPacienteId] = useState(null);
-  const [status, setStatus] = useState('realizada'); // 'realizada' ou 'agendada'
+  const [status, setStatus] = useState('realizada');
 
-  // Estados de Data e Hora
+  // Meta e Passo da Trilha
+  const [metas, setMetas] = useState([]);
+  const [metaId, setMetaId] = useState(null);
+  const [passos, setPassos] = useState([]);
+  const [passoId, setPassoId] = useState(null);
+  const [concluirPassoHoje, setConcluirPassoHoje] = useState(false);
+
+  // Data e Hora
   const [dataObj, setDataObj] = useState(new Date());
   const [horaInicioObj, setHoraInicioObj] = useState(new Date());
   const [horaFimObj, setHoraFimObj] = useState(new Date(Date.now() + 50 * 60000));
+  const [mostrarPicker, setMostrarPicker] = useState(null);
 
-  const [mostrarPicker, setMostrarPicker] = useState(null); // 'data', 'inicio', 'fim'
-
-  // Campos da Sessão
+  // Campos de Texto
   const [objetivo, setObjetivo] = useState('');
   const [material, setMaterial] = useState('');
   const [relatorio, setRelatorio] = useState('');
   const [anotacoes, setAnotacoes] = useState('');
-  const [marcoAvanco, setMarcoAvanco] = useState('');
+
+  const carregarMetasEPassos = (idPac) => {
+    if (!idPac) return;
+    const listaMetas = buscarMetasPaciente(idPac);
+    setMetas(listaMetas);
+    if (listaMetas.length > 0) {
+      const primeiraMeta = listaMetas[0].id;
+      setMetaId(primeiraMeta);
+      const listaPassos = buscarPassosPorMeta(primeiraMeta);
+      setPassos(listaPassos);
+      setPassoId(listaPassos[0] ? listaPassos[0].id : null);
+    } else {
+      setMetaId(null);
+      setPassos([]);
+      setPassoId(null);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
       const lista = listarPacientes();
       setPacientes(lista);
-      if (lista.length > 0 && !pacienteId) {
-        setPacienteId(lista[0].id);
+      const idInicial = pacienteId || (lista[0] ? lista[0].id : null);
+      if (idInicial) {
+        setPacienteId(idInicial);
+        carregarMetasEPassos(idInicial);
       }
     }, [pacienteId])
   );
 
+  const handleSelecionarPaciente = (id) => {
+    setPacienteId(id);
+    carregarMetasEPassos(id);
+  };
+
+  const handleSelecionarMeta = (idMeta) => {
+    setMetaId(idMeta);
+    const listaPassos = buscarPassosPorMeta(idMeta);
+    setPassos(listaPassos);
+    setPassoId(listaPassos[0] ? listaPassos[0].id : null);
+  };
+
   const formatarData = (d) => d.toISOString().split('T')[0];
-  const formatarHora = (d) =>
-    d.toTimeString().split(' ')[0].substring(0, 5);
+  const formatarHora = (d) => d.toTimeString().split(' ')[0].substring(0, 5);
 
   const onChangePicker = (event, selectedDate) => {
     const tipoAtual = mostrarPicker;
@@ -53,7 +94,7 @@ export default function NovaSessaoScreen({ navigation }) {
 
   const handleSalvar = () => {
     if (!pacienteId) {
-      Alert.alert('Atenção', 'Cadastre e selecione um paciente primeiro na aba Pacientes.');
+      Alert.alert('Atenção', 'Cadastre e selecione um paciente primeiro.');
       return;
     }
     if (!objetivo.trim() && status === 'realizada') {
@@ -63,6 +104,8 @@ export default function NovaSessaoScreen({ navigation }) {
 
     salvarSessao({
       paciente_id: pacienteId,
+      meta_id: metaId,
+      passo_id: passoId,
       status,
       objetivo_titulo: objetivo.trim() || 'Sessão Agendada',
       data: formatarData(dataObj),
@@ -71,17 +114,24 @@ export default function NovaSessaoScreen({ navigation }) {
       material_utilizado: material.trim(),
       relatorio_diario: relatorio.trim(),
       anotacoes: anotacoes.trim(),
-      marco_avanco: marcoAvanco.trim(),
     });
 
-    Alert.alert('Sucesso', 'Sessão registrada no prontuário!');
+    if (passoId && concluirPassoHoje) {
+      alternarPassoTrilha(passoId, true);
+    }
+
+    Alert.alert('Sucesso', 'Atendimento salvo com sucesso!');
 
     setObjetivo('');
     setMaterial('');
     setRelatorio('');
     setAnotacoes('');
-    setMarcoAvanco('');
+    setConcluirPassoHoje(false);
+    carregarMetasEPassos(pacienteId);
   };
+
+  const metaSelecionadaObj = metas.find((m) => m.id === metaId);
+  const corTema = metaSelecionadaObj?.cor || '#2563EB';
 
   return (
     <KeyboardAvoidingView
@@ -95,24 +145,50 @@ export default function NovaSessaoScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 1. SELEÇÃO DO PACIENTE */}
-        <Text style={styles.label}>Paciente *</Text>
+        <Text style={styles.label}>1. Paciente *</Text>
         {pacientes.length === 0 ? (
-          <Text style={styles.aviso}>
-            Nenhum paciente cadastrado. Vá na aba "Pacientes" para cadastrar o primeiro!
-          </Text>
+          <Text style={styles.aviso}>Cadastre um paciente na aba "Pacientes" primeiro.</Text>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.listaPacientes}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rowScroll}>
             {pacientes.map((p) => {
               const ativo = p.id === pacienteId;
               return (
                 <TouchableOpacity
                   key={p.id}
-                  style={[styles.chipPaciente, ativo && styles.chipAtivo]}
-                  onPress={() => setPacienteId(p.id)}
+                  style={[styles.chip, ativo && styles.chipAtivo]}
+                  onPress={() => handleSelecionarPaciente(p.id)}
                 >
-                  <Text style={[styles.chipTexto, ativo && styles.chipTextoAtivo]}>
-                    {p.nome}
+                  <Text style={[styles.chipTexto, ativo && styles.chipTextoAtivo]}>{p.nome}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        <Text style={styles.label}>2. Meta Trabalhada (Define o Ícone e Cor)</Text>
+        {metas.length === 0 ? (
+          <Text style={styles.textoSuave}>Nenhuma meta cadastrada para este paciente.</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rowScroll}>
+            {metas.map((m) => {
+              const ativa = m.id === metaId;
+              const corMeta = m.cor || '#2563EB';
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[
+                    styles.chipComIcone,
+                    ativa && { backgroundColor: corMeta, borderColor: corMeta },
+                  ]}
+                  onPress={() => handleSelecionarMeta(m.id)}
+                >
+                  <Ionicons
+                    name={m.icone || 'flag'}
+                    size={16}
+                    color={ativa ? '#FFF' : corMeta}
+                  />
+                  <Text style={[styles.chipTexto, ativa && styles.chipTextoAtivo]}>
+                    {m.descricao}
                   </Text>
                 </TouchableOpacity>
               );
@@ -120,8 +196,57 @@ export default function NovaSessaoScreen({ navigation }) {
           </ScrollView>
         )}
 
-        {/* 2. TIPO DE REGISTRO */}
-        <Text style={styles.label}>Status da Sessão</Text>
+        {metaId && (
+          <>
+            <Text style={styles.label}>3. Passo da Trilha Trabalhado</Text>
+            {passos.length === 0 ? (
+              <Text style={styles.textoSuave}>Nenhum passo cadastrado nesta meta.</Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rowScroll}>
+                {passos.map((passo, index) => {
+                  const ativo = passo.id === passoId;
+                  return (
+                    <TouchableOpacity
+                      key={passo.id}
+                      style={[
+                        styles.chipComIcone,
+                        ativo && { backgroundColor: corTema, borderColor: corTema },
+                      ]}
+                      onPress={() => setPassoId(passo.id)}
+                    >
+                      <Ionicons
+                        name={passo.concluido ? 'checkmark-circle' : 'footsteps'}
+                        size={16}
+                        color={ativo ? '#FFF' : passo.concluido ? '#16A34A' : '#475569'}
+                      />
+                      <Text style={[styles.chipTexto, ativo && styles.chipTextoAtivo]}>
+                        {index + 1}º: {passo.titulo}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </>
+        )}
+
+        {passoId && status === 'realizada' && (
+          <TouchableOpacity
+            style={[styles.boxConcluirPasso, concluirPassoHoje && styles.boxConcluirAtivo]}
+            onPress={() => setConcluirPassoHoje(!concluirPassoHoje)}
+          >
+            <Ionicons
+              name={concluirPassoHoje ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={concluirPassoHoje ? '#16A34A' : '#64748B'}
+            />
+            <Text style={styles.textoConcluirPasso}>
+              Esta etapa da trilha funcionou / foi concluída hoje
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <Text style={styles.label}>Status do Atendimento</Text>
         <View style={styles.rowStatus}>
           <TouchableOpacity
             style={[styles.btnStatus, status === 'realizada' && styles.btnStatusRealizada]}
@@ -141,7 +266,6 @@ export default function NovaSessaoScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* 3. DATA E HORÁRIOS */}
         <View style={styles.rowDataHora}>
           <View style={{ flex: 1.2 }}>
             <Text style={styles.label}>Data</Text>
@@ -183,59 +307,45 @@ export default function NovaSessaoScreen({ navigation }) {
           />
         )}
 
-        {/* 4. OBJETIVO DA SESSÃO */}
         <Text style={styles.label}>Objetivo da Sessão (Título)</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ex: Avaliação de atenção concentrada"
+          placeholder="Ex: Atividade de leitura guiada"
           value={objetivo}
           onChangeText={setObjetivo}
         />
 
-        {/* 5. MATERIAL UTILIZADO */}
         <Text style={styles.label}>Material Utilizado</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ex: Teste HTP, Baralho das Emoções..."
+          placeholder="Ex: Jogos lógicos, fichas de leitura..."
           value={material}
           onChangeText={setMaterial}
         />
 
-        {/* 6. RELATÓRIO DIÁRIO */}
         <Text style={styles.label}>Relatório Diário</Text>
         <TextInput
           style={[styles.input, styles.areaTexto]}
-          placeholder="Como o paciente chegou hoje, humor, disposição..."
+          placeholder="Disposição e resumo do dia..."
           multiline
           numberOfLines={3}
           value={relatorio}
           onChangeText={setRelatorio}
         />
 
-        {/* 7. ANOTAÇÕES DA SESSÃO */}
         <Text style={styles.label}>Anotações da Sessão</Text>
         <TextInput
           style={[styles.input, styles.areaTextoMaior]}
-          placeholder="Anotações clínicas detalhadas, falas importantes..."
+          placeholder="Observações detalhadas do atendimento..."
           multiline
-          numberOfLines={5}
+          numberOfLines={4}
           value={anotacoes}
           onChangeText={setAnotacoes}
         />
 
-        {/* 8. MARCO DA TRILHA DE AVANÇOS */}
-        <Text style={styles.label}>Destaque na Trilha de Avanços (Opcional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Ex: Conseguiu concluir a atividade sem frustração"
-          value={marcoAvanco}
-          onChangeText={setMarcoAvanco}
-        />
-
-        {/* BOTÃO SALVAR */}
-        <TouchableOpacity style={styles.btnSalvar} onPress={handleSalvar}>
+        <TouchableOpacity style={[styles.btnSalvar, { backgroundColor: corTema }]} onPress={handleSalvar}>
           <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" />
-          <Text style={styles.textoBtnSalvar}>Salvar Registro da Sessão</Text>
+          <Text style={styles.textoBtnSalvar}>Salvar Atendimento</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -246,12 +356,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   scrollArea: { flex: 1, padding: 16 },
   label: { fontSize: 13, fontWeight: '700', color: '#334155', marginBottom: 6, marginTop: 12 },
+  textoSuave: { fontSize: 12, color: '#64748B', marginBottom: 6 },
   aviso: { color: '#EF4444', fontSize: 13, marginBottom: 8 },
-  listaPacientes: { flexDirection: 'row', marginBottom: 4 },
-  chipPaciente: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, backgroundColor: '#E2E8F0', marginRight: 8 },
+  rowScroll: { flexDirection: 'row', marginBottom: 4 },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, backgroundColor: '#E2E8F0', marginRight: 8 },
   chipAtivo: { backgroundColor: '#2563EB' },
-  chipTexto: { color: '#334155', fontWeight: '600' },
+  chipComIcone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    marginRight: 8,
+  },
+  chipTexto: { color: '#334155', fontWeight: '600', fontSize: 13 },
   chipTextoAtivo: { color: '#FFFFFF' },
+  boxConcluirPasso: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    marginTop: 10,
+  },
+  boxConcluirAtivo: { backgroundColor: '#F0FDF4', borderColor: '#16A34A' },
+  textoConcluirPasso: { fontSize: 13, fontWeight: '600', color: '#1E293B', flex: 1 },
   rowStatus: { flexDirection: 'row', gap: 10 },
   btnStatus: { flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', backgroundColor: '#FFF' },
   btnStatusRealizada: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
@@ -262,8 +398,8 @@ const styles = StyleSheet.create({
   btnPicker: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' },
   textoPicker: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
   input: { backgroundColor: '#FFF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', fontSize: 14, color: '#1E293B' },
-  areaTexto: { height: 80, textAlignVertical: 'top' },
-  areaTextoMaior: { height: 110, textAlignVertical: 'top' },
-  btnSalvar: { backgroundColor: '#2563EB', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, padding: 16, borderRadius: 10, marginTop: 24, marginBottom: 20 },
+  areaTexto: { height: 75, textAlignVertical: 'top' },
+  areaTextoMaior: { height: 100, textAlignVertical: 'top' },
+  btnSalvar: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, padding: 16, borderRadius: 10, marginTop: 24 },
   textoBtnSalvar: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
 });
