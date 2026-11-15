@@ -1,29 +1,61 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  FlatList, Modal, ScrollView, Alert
+  FlatList, Modal, ScrollView, Alert, Platform
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  criarPaciente, listarPacientes, adicionarMeta,
-  alternarStatusMeta, buscarMetasPaciente, listarSessoesPaciente
+  criarPaciente, listarPacientes, adicionarMeta, editarMeta, excluirMeta,
+  buscarMetasPaciente, adicionarPassoTrilha, buscarPassosPorMeta,
+  alternarPassoTrilha, excluirPassoTrilha, listarSessoesPaciente,
+  atualizarSessaoCompleta, excluirSessao
 } from '../database/db';
+import TrilhaAprendizado from '../components/TrilhaAprendizado';
+import SeletorVisual from '../components/SeletorVisual';
 
 export default function PacientesScreen() {
   const [pacientes, setPacientes] = useState([]);
   const [busca, setBusca] = useState('');
   const [novoNome, setNovoNome] = useState('');
 
-  // Estados do Modal de Prontuário do Paciente
+  // Prontuário e Criação de Meta
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
   const [metas, setMetas] = useState([]);
   const [novaMeta, setNovaMeta] = useState('');
+  const [iconeMeta, setIconeMeta] = useState('flag');
+  const [corMeta, setCorMeta] = useState('#2563EB');
+  const [mostrarSeletorMeta, setMostrarSeletorMeta] = useState(false);
+
+  // Meta Selecionada e Edição de Meta Existente
+  const [metaAtivaId, setMetaAtivaId] = useState(null);
+  const [editandoMetaAtual, setEditandoMetaAtual] = useState(false);
+  const [editMetaDesc, setEditMetaDesc] = useState('');
+  const [editMetaIcone, setEditMetaIcone] = useState('flag');
+  const [editMetaCor, setEditMetaCor] = useState('#2563EB');
+
+  const [passosDaMeta, setPassosDaMeta] = useState([]);
   const [sessoes, setSessoes] = useState([]);
 
+  // Estados para abrir e editar completamente um atendimento do histórico
+  const [sessaoHistoricoAberta, setSessaoHistoricoAberta] = useState(null);
+  const [modoEdicaoSessao, setModoEdicaoSessao] = useState(false);
+  const [editStatus, setEditStatus] = useState('realizada');
+  const [editSessaoMetaId, setEditSessaoMetaId] = useState(null);
+  const [editSessaoPassoId, setEditSessaoPassoId] = useState(null);
+  const [passosSessaoEdit, setPassosSessaoEdit] = useState([]);
+  const [editData, setEditData] = useState('');
+  const [editInicio, setEditInicio] = useState('');
+  const [editFim, setEditFim] = useState('');
+  const [editObjetivo, setEditObjetivo] = useState('');
+  const [editMaterial, setEditMaterial] = useState('');
+  const [editRelatorio, setEditRelatorio] = useState('');
+  const [editAnotacoes, setEditAnotacoes] = useState('');
+  const [pickerModo, setPickerModo] = useState(null);
+
   const carregarPacientes = () => {
-    const lista = listarPacientes();
-    setPacientes(lista);
+    setPacientes(listarPacientes());
   };
 
   useFocusEffect(
@@ -42,36 +74,215 @@ export default function PacientesScreen() {
     carregarPacientes();
   };
 
+  const recarregarDadosProntuario = (pacienteId, metaIdParaAbrir = metaAtivaId) => {
+    const listaMetas = buscarMetasPaciente(pacienteId);
+    setMetas(listaMetas);
+    setSessoes(listarSessoesPaciente(pacienteId));
+
+    const idAlvo =
+      listaMetas.some((m) => m.id === metaIdParaAbrir)
+        ? metaIdParaAbrir
+        : listaMetas[0]
+        ? listaMetas[0].id
+        : null;
+
+    setMetaAtivaId(idAlvo);
+    if (idAlvo) {
+      setPassosDaMeta(buscarPassosPorMeta(idAlvo));
+    } else {
+      setPassosDaMeta([]);
+      setEditandoMetaAtual(false);
+    }
+  };
+
   const abrirProntuario = (paciente) => {
     setPacienteSelecionado(paciente);
-    setMetas(buscarMetasPaciente(paciente.id));
-    setSessoes(listarSessoesPaciente(paciente.id));
+    setSessaoHistoricoAberta(null);
+    setEditandoMetaAtual(false);
+    recarregarDadosProntuario(paciente.id, null);
+  };
+
+  const selecionarMeta = (meta) => {
+    setMetaAtivaId(meta.id);
+    setPassosDaMeta(buscarPassosPorMeta(meta.id));
+    setEditandoMetaAtual(false);
+  };
+
+  const iniciarEdicaoDaMeta = (meta) => {
+    setEditMetaDesc(meta.descricao);
+    setEditMetaIcone(meta.icone || 'flag');
+    setEditMetaCor(meta.cor || '#2563EB');
+    setEditandoMetaAtual(!editandoMetaAtual);
+  };
+
+  const handleSalvarEdicaoMeta = () => {
+    if (!metaAtivaId || !editMetaDesc.trim()) return;
+    editarMeta(metaAtivaId, editMetaDesc.trim(), editMetaIcone, editMetaCor);
+    setEditandoMetaAtual(false);
+    recarregarDadosProntuario(pacienteSelecionado.id, metaAtivaId);
+    Alert.alert('Sucesso', 'Meta atualizada com sucesso!');
+  };
+
+  const handleExcluirMetaAtual = () => {
+    if (!metaAtivaId) return;
+    Alert.alert('Excluir Meta', 'Deseja apagar esta meta e seus passos?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          excluirMeta(metaAtivaId);
+          setEditandoMetaAtual(false);
+          recarregarDadosProntuario(pacienteSelecionado.id, null);
+        },
+      },
+    ]);
   };
 
   const handleAdicionarMeta = () => {
     if (!novaMeta.trim() || !pacienteSelecionado) return;
-    adicionarMeta(pacienteSelecionado.id, novaMeta.trim());
+    const novoId = adicionarMeta(pacienteSelecionado.id, novaMeta.trim(), iconeMeta, corMeta);
     setNovaMeta('');
-    setMetas(buscarMetasPaciente(pacienteSelecionado.id));
+    setMostrarSeletorMeta(false);
+    recarregarDadosProntuario(pacienteSelecionado.id, novoId);
   };
 
-  const handleAlternarMeta = (meta) => {
-    alternarStatusMeta(meta.id, meta.alcancada === 0);
-    setMetas(buscarMetasPaciente(pacienteSelecionado.id));
+  const handleAddPasso = (tituloPasso) => {
+    if (!metaAtivaId || !pacienteSelecionado) return;
+    const metaObj = metas.find((m) => m.id === metaAtivaId);
+    adicionarPassoTrilha(
+      metaAtivaId,
+      pacienteSelecionado.id,
+      tituloPasso,
+      metaObj?.icone || 'star',
+      metaObj?.cor || '#2563EB'
+    );
+    recarregarDadosProntuario(pacienteSelecionado.id, metaAtivaId);
   };
 
+  const handleTogglePasso = (passo) => {
+    alternarPassoTrilha(passo.id, passo.concluido === 0);
+    recarregarDadosProntuario(pacienteSelecionado.id, metaAtivaId);
+  };
+
+  const handleDeletePasso = (passo) => {
+    excluirPassoTrilha(passo.id, metaAtivaId);
+    recarregarDadosProntuario(pacienteSelecionado.id, metaAtivaId);
+  };
+
+  // --- FUNÇÕES DE EDIÇÃO COMPLETA DA SESSÃO NO HISTÓRICO ---
+  const abrirSessaoDoHistorico = (s) => {
+    setSessaoHistoricoAberta(s);
+    setModoEdicaoSessao(false);
+    setEditStatus(s.status || 'realizada');
+    setEditSessaoMetaId(s.meta_id_real || null);
+    setEditSessaoPassoId(s.passo_id || null);
+    setEditData(s.data || '');
+    setEditInicio(s.horario_inicio || '14:00');
+    setEditFim(s.horario_termino || '14:50');
+    setEditObjetivo(s.objetivo_titulo || '');
+    setEditMaterial(s.material_utilizado || '');
+    setEditRelatorio(s.relatorio_diario || '');
+    setEditAnotacoes(s.anotacoes || '');
+
+    if (s.meta_id_real) {
+      setPassosSessaoEdit(buscarPassosPorMeta(s.meta_id_real));
+    } else {
+      setPassosSessaoEdit([]);
+    }
+  };
+
+  const handleTrocarMetaNaSessao = (idNovaMeta) => {
+    setEditSessaoMetaId(idNovaMeta);
+    const novosPassos = buscarPassosPorMeta(idNovaMeta);
+    setPassosSessaoEdit(novosPassos);
+    setEditSessaoPassoId(novosPassos[0] ? novosPassos[0].id : null);
+  };
+
+  const obterDataObj = (strData) => {
+    if (!strData) return new Date();
+    const [ano, mes, dia] = strData.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
+  const obterHoraObj = (strHora) => {
+    const d = new Date();
+    if (!strHora || !strHora.includes(':')) return d;
+    const [h, m] = strHora.split(':').map(Number);
+    d.setHours(h || 0, m || 0, 0, 0);
+    return d;
+  };
+
+  const onChangePicker = (event, selectedDate) => {
+    const modoAtual = pickerModo;
+    if (Platform.OS === 'android') setPickerModo(null);
+    if (!selectedDate) return;
+
+    if (modoAtual === 'data') {
+      const ano = selectedDate.getFullYear();
+      const mes = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const dia = String(selectedDate.getDate()).padStart(2, '0');
+      setEditData(`${ano}-${mes}-${dia}`);
+    } else if (modoAtual === 'inicio') {
+      setEditInicio(selectedDate.toTimeString().split(' ')[0].substring(0, 5));
+    } else if (modoAtual === 'fim') {
+      setEditFim(selectedDate.toTimeString().split(' ')[0].substring(0, 5));
+    }
+  };
+
+  const salvarEdicaoNoHistorico = () => {
+    if (!sessaoHistoricoAberta || !pacienteSelecionado) return;
+    atualizarSessaoCompleta(sessaoHistoricoAberta.id, {
+      meta_id: editSessaoMetaId,
+      passo_id: editSessaoPassoId,
+      status: editStatus,
+      objetivo_titulo: editObjetivo.trim() || 'Sessão Agendada',
+      data: editData.trim(),
+      horario_inicio: editInicio.trim(),
+      horario_termino: editFim.trim(),
+      material_utilizado: editMaterial.trim(),
+      relatorio_diario: editRelatorio.trim(),
+      anotacoes: editAnotacoes.trim(),
+    });
+    const atualizadas = listarSessoesPaciente(pacienteSelecionado.id);
+    setSessoes(atualizadas);
+    setSessaoHistoricoAberta(atualizadas.find((item) => item.id === sessaoHistoricoAberta.id));
+    setModoEdicaoSessao(false);
+    Alert.alert('Sucesso', 'Atendimento atualizado!');
+  };
+
+  const handleTogglePassoNoHistorico = (passo) => {
+    alternarPassoTrilha(passo.id, passo.concluido === 0);
+    if (editSessaoMetaId) {
+      setPassosSessaoEdit(buscarPassosPorMeta(editSessaoMetaId));
+    }
+    recarregarDadosProntuario(pacienteSelecionado.id, metaAtivaId);
+  };
+
+  const excluirSessaoDoHistorico = () => {
+    if (!sessaoHistoricoAberta || !pacienteSelecionado) return;
+    Alert.alert('Excluir Atendimento', 'Deseja apagar este atendimento?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          excluirSessao(sessaoHistoricoAberta.id);
+          setSessaoHistoricoAberta(null);
+          recarregarDadosProntuario(pacienteSelecionado.id, metaAtivaId);
+        },
+      },
+    ]);
+  };
+
+  const metaAtualObj = metas.find((m) => m.id === metaAtivaId);
+  const metaDaSessaoHistObj = metas.find((m) => m.id === editSessaoMetaId);
   const pacientesFiltrados = pacientes.filter((p) =>
     p.nome.toLowerCase().includes(busca.toLowerCase())
   );
 
-  // Cálculo da Trilha de Avanços (% de metas concluídas)
-  const totalMetas = metas.length;
-  const metasConcluidas = metas.filter((m) => m.alcancada === 1).length;
-  const progresso = totalMetas > 0 ? Math.round((metasConcluidas / totalMetas) * 100) : 0;
-
   return (
     <View style={styles.container}>
-      {/* Cadastro Rápido */}
       <View style={styles.cardCadastro}>
         <TextInput
           style={styles.input}
@@ -84,7 +295,6 @@ export default function PacientesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Barra de Pesquisa */}
       <TextInput
         style={styles.inputBusca}
         placeholder="Buscar paciente cadastrado..."
@@ -92,108 +302,412 @@ export default function PacientesScreen() {
         onChangeText={setBusca}
       />
 
-      {/* Lista de Pacientes */}
       <FlatList
         data={pacientesFiltrados}
         keyExtractor={(item) => String(item.id)}
-        ListEmptyComponent={
-          <Text style={styles.empty}>Nenhum paciente cadastrado ainda.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>Nenhum paciente cadastrado.</Text>}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.itemPaciente} onPress={() => abrirProntuario(item)}>
             <View>
               <Text style={styles.nomePaciente}>{item.nome}</Text>
-              <Text style={styles.subTexto}>Toque para ver Trilha, Metas e Histórico</Text>
+              <Text style={styles.subTexto}>Toque para gerenciar Metas, Trilhas e Histórico</Text>
             </View>
             <Ionicons name="chevron-forward" size={22} color="#64748B" />
           </TouchableOpacity>
         )}
       />
 
-      {/* Modal: Prontuário Completo do Paciente */}
       <Modal visible={!!pacienteSelecionado} animationType="slide">
         <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitulo}>{pacienteSelecionado?.nome}</Text>
-            <TouchableOpacity onPress={() => setPacienteSelecionado(null)}>
-              <Ionicons name="close-circle" size={30} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* TRILHA DE AVANÇOS */}
-            <View style={styles.secaoCard}>
-              <Text style={styles.secaoTitulo}>Trilha de Avanços ({progresso}%)</Text>
-              <View style={styles.barraFundo}>
-                <View style={[styles.barraPreenchida, { width: `${progresso}%` }]} />
-              </View>
-              <Text style={styles.resumoAvanco}>
-                {metasConcluidas} de {totalMetas} metas alcançadas
-              </Text>
-            </View>
-
-            {/* METAS A ALCANÇAR */}
-            <View style={styles.secaoCard}>
-              <Text style={styles.secaoTitulo}>Metas a Alcançar</Text>
-              <View style={styles.rowMeta}>
-                <TextInput
-                  style={styles.inputMeta}
-                  placeholder="Adicionar nova meta..."
-                  value={novaMeta}
-                  onChangeText={setNovaMeta}
-                />
-                <TouchableOpacity style={styles.btnMeta} onPress={handleAdicionarMeta}>
-                  <Ionicons name="add" size={22} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-
-              {metas.map((meta) => (
+          {/* VISÃO 1: DETALHES E EDIÇÃO COMPLETA DO ATENDIMENTO CLICADO NO HISTÓRICO */}
+          {sessaoHistoricoAberta ? (
+            <View style={{ flex: 1 }}>
+              <View style={styles.modalHeader}>
                 <TouchableOpacity
-                  key={meta.id}
-                  style={styles.itemMeta}
-                  onPress={() => handleAlternarMeta(meta)}
+                  style={styles.btnVoltar}
+                  onPress={() => setSessaoHistoricoAberta(null)}
                 >
-                  <Ionicons
-                    name={meta.alcancada ? 'checkbox' : 'square-outline'}
-                    size={22}
-                    color={meta.alcancada ? '#16A34A' : '#64748B'}
-                  />
-                  <Text style={[styles.textoMeta, meta.alcancada ? styles.metaConcluida : null]}>
-                    {meta.descricao}
-                  </Text>
+                  <Ionicons name="arrow-back" size={22} color="#2563EB" />
+                  <Text style={styles.txtVoltar}>Voltar ao Prontuário</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
 
-            {/* HISTÓRICO DE SESSÕES DO PACIENTE */}
-            <View style={styles.secaoCard}>
-              <Text style={styles.secaoTitulo}>Histórico de Sessões ({sessoes.length})</Text>
-              {sessoes.length === 0 ? (
-                <Text style={styles.subTexto}>Nenhuma sessão registrada para este paciente.</Text>
-              ) : (
-                sessoes.map((s) => (
-                  <View key={s.id} style={styles.cardSessao}>
-                    <Text style={styles.sessaoObjetivo}>{s.objetivo_titulo || 'Sessão Agendada'}</Text>
-                    <Text style={styles.sessaoDataHora}>
-                      Data: {s.data} | {s.horario_inicio} às {s.horario_termino} ({s.status})
-                    </Text>
-                    {s.material_utilizado ? (
-                      <Text style={styles.sessaoCampo}><Text style={styles.bold}>Material:</Text> {s.material_utilizado}</Text>
-                    ) : null}
-                    {s.relatorio_diario ? (
-                      <Text style={styles.sessaoCampo}><Text style={styles.bold}>Relatório Diário:</Text> {s.relatorio_diario}</Text>
-                    ) : null}
-                    {s.anotacoes ? (
-                      <Text style={styles.sessaoCampo}><Text style={styles.bold}>Anotações:</Text> {s.anotacoes}</Text>
-                    ) : null}
-                    {s.marco_avanco ? (
-                      <Text style={styles.sessaoAvanco}>★ Avanço: {s.marco_avanco}</Text>
-                    ) : null}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={styles.btnIconeAcao}
+                    onPress={() => setModoEdicaoSessao(!modoEdicaoSessao)}
+                  >
+                    <Ionicons name={modoEdicaoSessao ? 'eye-outline' : 'create-outline'} size={22} color="#2563EB" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.btnIconeAcao} onPress={excluirSessaoDoHistorico}>
+                    <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+                <View style={styles.secaoCard}>
+                  <View style={styles.rowTopoSessao}>
+                    <View
+                      style={[
+                        styles.badgeMetaGrande,
+                        { backgroundColor: metaDaSessaoHistObj?.cor || sessaoHistoricoAberta.meta_cor || '#2563EB' },
+                      ]}
+                    >
+                      <Ionicons
+                        name={metaDaSessaoHistObj?.icone || sessaoHistoricoAberta.meta_icone || 'flag'}
+                        size={22}
+                        color="#FFF"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sessaoDataHora}>
+                        {sessaoHistoricoAberta.data} • {sessaoHistoricoAberta.horario_inicio} às {sessaoHistoricoAberta.horario_termino} ({sessaoHistoricoAberta.status?.toUpperCase()})
+                      </Text>
+                      <Text style={styles.nomePaciente}>
+                        {metaDaSessaoHistObj?.descricao || sessaoHistoricoAberta.meta_titulo || 'Sem meta vinculada'}
+                      </Text>
+                    </View>
                   </View>
-                ))
-              )}
+
+                  {modoEdicaoSessao ? (
+                    <>
+                      <Text style={styles.labelDetalhe}>Status</Text>
+                      <View style={styles.rowStatusEdit}>
+                        <TouchableOpacity
+                          style={[styles.btnStatus, editStatus === 'realizada' && styles.btnRealizadaAtivo]}
+                          onPress={() => setEditStatus('realizada')}
+                        >
+                          <Text style={[styles.txtStatus, editStatus === 'realizada' && { color: '#FFF' }]}>
+                            Realizada
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.btnStatus, editStatus === 'agendada' && styles.btnAgendadaAtivo]}
+                          onPress={() => setEditStatus('agendada')}
+                        >
+                          <Text style={[styles.txtStatus, editStatus === 'agendada' && { color: '#FFF' }]}>
+                            Agendada
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.labelDetalhe}>Meta Vinculada</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                        {metas.map((m) => {
+                          const ativa = editSessaoMetaId === m.id;
+                          const corM = m.cor || '#2563EB';
+                          return (
+                            <TouchableOpacity
+                              key={m.id}
+                              onPress={() => handleTrocarMetaNaSessao(m.id)}
+                              style={[styles.chipPasso, ativa && { backgroundColor: corM }]}
+                            >
+                              <Ionicons name={m.icone || 'flag'} size={14} color={ativa ? '#FFF' : corM} />
+                              <Text style={[styles.chipPassoTxt, ativa && { color: '#FFF' }]}>
+                                {m.descricao}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+
+                      {passosSessaoEdit.length > 0 && (
+                        <>
+                          <Text style={styles.labelDetalhe}>Passo da Trilha Trabalhado</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                            {passosSessaoEdit.map((p, idx) => (
+                              <TouchableOpacity
+                                key={p.id}
+                                onPress={() => setEditSessaoPassoId(p.id)}
+                                style={[
+                                  styles.chipPasso,
+                                  editSessaoPassoId === p.id && { backgroundColor: metaDaSessaoHistObj?.cor || '#2563EB' },
+                                ]}
+                              >
+                                <Text style={[styles.chipPassoTxt, editSessaoPassoId === p.id && { color: '#FFF' }]}>
+                                  {idx + 1}º: {p.titulo}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </>
+                      )}
+
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <View style={{ flex: 1.2 }}>
+                          <Text style={styles.labelDetalhe}>Data</Text>
+                          <TouchableOpacity style={styles.btnPicker} onPress={() => setPickerModo('data')}>
+                            <Ionicons name="calendar-outline" size={16} color="#2563EB" />
+                            <Text style={styles.txtPicker}>{editData}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.labelDetalhe}>Início</Text>
+                          <TouchableOpacity style={styles.btnPicker} onPress={() => setPickerModo('inicio')}>
+                            <Ionicons name="time-outline" size={16} color="#2563EB" />
+                            <Text style={styles.txtPicker}>{editInicio}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.labelDetalhe}>Término</Text>
+                          <TouchableOpacity style={styles.btnPicker} onPress={() => setPickerModo('fim')}>
+                            <Ionicons name="time-outline" size={16} color="#2563EB" />
+                            <Text style={styles.txtPicker}>{editFim}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {pickerModo && (
+                        <DateTimePicker
+                          value={
+                            pickerModo === 'data'
+                              ? obterDataObj(editData)
+                              : pickerModo === 'inicio'
+                              ? obterHoraObj(editInicio)
+                              : obterHoraObj(editFim)
+                          }
+                          mode={pickerModo === 'data' ? 'date' : 'time'}
+                          is24Hour={true}
+                          onChange={onChangePicker}
+                        />
+                      )}
+
+                      <Text style={styles.labelDetalhe}>Objetivo da Sessão</Text>
+                      <TextInput style={styles.inputMeta} value={editObjetivo} onChangeText={setEditObjetivo} />
+
+                      <Text style={styles.labelDetalhe}>Material Utilizado</Text>
+                      <TextInput style={styles.inputMeta} value={editMaterial} onChangeText={setEditMaterial} />
+
+                      <Text style={styles.labelDetalhe}>Relatório Diário</Text>
+                      <TextInput
+                        style={[styles.inputMeta, { height: 70, textAlignVertical: 'top' }]}
+                        multiline
+                        value={editRelatorio}
+                        onChangeText={setEditRelatorio}
+                      />
+
+                      <Text style={styles.labelDetalhe}>Anotações da Sessão</Text>
+                      <TextInput
+                        style={[styles.inputMeta, { height: 90, textAlignVertical: 'top' }]}
+                        multiline
+                        value={editAnotacoes}
+                        onChangeText={setEditAnotacoes}
+                      />
+
+                      <TouchableOpacity style={styles.btnSalvarHist} onPress={salvarEdicaoNoHistorico}>
+                        <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Salvar Alterações</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.labelDetalhe}>Objetivo da Sessão</Text>
+                      <Text style={styles.valorDetalhe}>{sessaoHistoricoAberta.objetivo_titulo}</Text>
+
+                      <Text style={styles.labelDetalhe}>Passo da Trilha Trabalhado</Text>
+                      <Text style={styles.valorDetalhe}>{sessaoHistoricoAberta.passo_titulo || 'Não informado'}</Text>
+
+                      <Text style={styles.labelDetalhe}>Material Utilizado</Text>
+                      <Text style={styles.valorDetalhe}>{sessaoHistoricoAberta.material_utilizado || 'Não informado'}</Text>
+
+                      <Text style={styles.labelDetalhe}>Relatório Diário</Text>
+                      <Text style={styles.valorDetalhe}>{sessaoHistoricoAberta.relatorio_diario || 'Não informado'}</Text>
+
+                      <Text style={styles.labelDetalhe}>Anotações da Sessão</Text>
+                      <Text style={styles.valorDetalhe}>{sessaoHistoricoAberta.anotacoes || 'Não informado'}</Text>
+                    </>
+                  )}
+                </View>
+
+                {editSessaoMetaId && (
+                  <TrilhaAprendizado
+                    metaTitulo={metaDaSessaoHistObj?.descricao || sessaoHistoricoAberta.meta_titulo}
+                    metaAlcancada={metaDaSessaoHistObj?.alcancada === 1}
+                    passos={passosSessaoEdit}
+                    passoDestaqueId={editSessaoPassoId}
+                    onTogglePasso={handleTogglePassoNoHistorico}
+                  />
+                )}
+              </ScrollView>
             </View>
-          </ScrollView>
+          ) : (
+            /* VISÃO 2: PRONTUÁRIO DO PACIENTE (METAS, EDIÇÃO DE COR/ÍCONE DA META, TRILHA E HISTÓRICO) */
+            <>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitulo}>{pacienteSelecionado?.nome}</Text>
+                <TouchableOpacity onPress={() => setPacienteSelecionado(null)}>
+                  <Ionicons name="close-circle" size={30} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                <View style={styles.secaoCard}>
+                  <Text style={styles.secaoTitulo}>1. Metas a Alcançar</Text>
+                  <View style={styles.rowMeta}>
+                    <TouchableOpacity
+                      style={[styles.btnIconeMeta, { backgroundColor: corMeta }]}
+                      onPress={() => setMostrarSeletorMeta(!mostrarSeletorMeta)}
+                    >
+                      <Ionicons name={iconeMeta} size={20} color="#FFF" />
+                    </TouchableOpacity>
+                    <TextInput
+                      style={styles.inputMeta}
+                      placeholder="Criar nova meta..."
+                      value={novaMeta}
+                      onChangeText={setNovaMeta}
+                    />
+                    <TouchableOpacity style={[styles.btnMeta, { backgroundColor: corMeta }]} onPress={handleAdicionarMeta}>
+                      <Ionicons name="add" size={22} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {mostrarSeletorMeta && (
+                    <SeletorVisual
+                      iconeSelecionado={iconeMeta}
+                      corSelecionada={corMeta}
+                      onSelectIcone={setIconeMeta}
+                      onSelectCor={setCorMeta}
+                    />
+                  )}
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {metas.map((meta) => {
+                      const selecionada = meta.id === metaAtivaId;
+                      const corDaMeta = meta.cor || '#2563EB';
+                      return (
+                        <TouchableOpacity
+                          key={meta.id}
+                          onPress={() => selecionarMeta(meta)}
+                          style={[
+                            styles.chipMeta,
+                            selecionada && { backgroundColor: corDaMeta },
+                            meta.alcancada === 1 && styles.chipMetaConcluida,
+                          ]}
+                        >
+                          <Ionicons
+                            name={meta.alcancada ? 'trophy' : (meta.icone || 'flag')}
+                            size={16}
+                            color={selecionada ? '#FFF' : corDaMeta}
+                          />
+                          <Text style={[styles.chipMetaTexto, selecionada && { color: '#FFF' }]}>
+                            {meta.descricao}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* BARRA E PAINEL PARA EDITAR COR, ÍCONE E NOME DA META SELECIONADA */}
+                  {metaAtualObj && (
+                    <View style={styles.boxEditarMetaExistente}>
+                      <View style={styles.rowCabecalhoEditMeta}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                          <View style={[styles.miniBadgeMeta, { backgroundColor: metaAtualObj.cor || '#2563EB' }]}>
+                            <Ionicons name={metaAtualObj.icone || 'flag'} size={14} color="#FFF" />
+                          </View>
+                          <Text style={styles.txtMetaSelecionada} numberOfLines={1}>
+                            Meta ativa: {metaAtualObj.descricao}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.btnAbrirEditMeta}
+                          onPress={() => iniciarEdicaoDaMeta(metaAtualObj)}
+                        >
+                          <Ionicons name="color-palette-outline" size={16} color="#2563EB" />
+                          <Text style={styles.txtBtnAbrirEditMeta}>
+                            {editandoMetaAtual ? 'Fechar' : 'Mudar Cor / Ícone'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {editandoMetaAtual && (
+                        <View style={{ marginTop: 10 }}>
+                          <Text style={styles.labelDetalhe}>Nome da Meta</Text>
+                          <TextInput
+                            style={[styles.inputMeta, { marginBottom: 10 }]}
+                            value={editMetaDesc}
+                            onChangeText={setEditMetaDesc}
+                          />
+
+                          <SeletorVisual
+                            iconeSelecionado={editMetaIcone}
+                            corSelecionada={editMetaCor}
+                            onSelectIcone={setEditMetaIcone}
+                            onSelectCor={setEditMetaCor}
+                          />
+
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              style={[styles.btnSalvarMetaEdit, { backgroundColor: editMetaCor, flex: 1 }]}
+                              onPress={handleSalvarEdicaoMeta}
+                            >
+                              <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                              <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Salvar Meta</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.btnExcluirMeta}
+                              onPress={handleExcluirMetaAtual}
+                            >
+                              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {metaAtualObj && (
+                  <View style={styles.secaoCard}>
+                    <Text style={styles.secaoTitulo}>2. Passos da Trilha desta Meta</Text>
+                    <TrilhaAprendizado
+                      metaTitulo={metaAtualObj.descricao}
+                      metaAlcancada={metaAtualObj.alcancada === 1}
+                      passos={passosDaMeta}
+                      onAddPasso={handleAddPasso}
+                      onTogglePasso={handleTogglePasso}
+                      onDeletePasso={handleDeletePasso}
+                    />
+                  </View>
+                )}
+
+                <View style={styles.secaoCard}>
+                  <Text style={styles.secaoTitulo}>3. Histórico de Atendimentos ({sessoes.length})</Text>
+                  {sessoes.map((s) => {
+                    const corCard = s.meta_cor || '#2563EB';
+                    const iconeCard = s.meta_icone || 'flag';
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        activeOpacity={0.7}
+                        onPress={() => abrirSessaoDoHistorico(s)}
+                        style={[styles.cardSessao, { borderLeftColor: corCard }]}
+                      >
+                        <View style={styles.rowHistoricoCard}>
+                          <View style={[styles.badgeIconeHist, { backgroundColor: corCard }]}>
+                            <Ionicons name={iconeCard} size={16} color="#FFF" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.sessaoObjetivo}>{s.objetivo_titulo}</Text>
+                            <Text style={styles.sessaoDataHora}>
+                              {s.data} | {s.horario_inicio} às {s.horario_termino} ({s.status})
+                            </Text>
+                            {s.meta_titulo ? (
+                              <Text style={[styles.sessaoPasso, { color: corCard }]}>
+                                {s.meta_titulo} {s.passo_titulo ? `• ${s.passo_titulo}` : ''}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </>
+          )}
         </View>
       </Modal>
     </View>
@@ -214,20 +728,43 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitulo: { fontSize: 22, fontWeight: 'bold', color: '#0F172A' },
   secaoCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 10, marginBottom: 14 },
-  secaoTitulo: { fontSize: 16, fontWeight: 'bold', color: '#1E293B', marginBottom: 10 },
-  barraFundo: { height: 12, backgroundColor: '#E2E8F0', borderRadius: 6, overflow: 'hidden' },
-  barraPreenchida: { height: '100%', backgroundColor: '#16A34A' },
-  resumoAvanco: { fontSize: 12, color: '#475569', marginTop: 6 },
-  rowMeta: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  secaoTitulo: { fontSize: 14, fontWeight: 'bold', color: '#1E293B', marginBottom: 10 },
+  rowMeta: { flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'center' },
+  btnIconeMeta: { width: 42, height: 42, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   inputMeta: { flex: 1, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' },
-  btnMeta: { backgroundColor: '#16A34A', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderRadius: 8 },
-  itemMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  textoMeta: { fontSize: 14, color: '#334155', flex: 1 },
-  metaConcluida: { textDecorationLine: 'line-through', color: '#94A3B8' },
-  cardSessao: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#2563EB' },
-  sessaoObjetivo: { fontSize: 15, fontWeight: 'bold', color: '#1E293B' },
-  sessaoDataHora: { fontSize: 12, color: '#64748B', marginBottom: 6 },
-  sessaoCampo: { fontSize: 13, color: '#334155', marginTop: 4 },
-  bold: { fontWeight: 'bold' },
-  sessaoAvanco: { fontSize: 13, color: '#15803D', fontWeight: '600', marginTop: 6 },
+  btnMeta: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, height: 42, borderRadius: 8 },
+  chipMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, marginRight: 8 },
+  chipMetaConcluida: { borderWidth: 2, borderColor: '#16A34A' },
+  chipMetaTexto: { fontWeight: '600', color: '#1E293B', fontSize: 13 },
+  boxEditarMetaExistente: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
+  rowCabecalhoEditMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  miniBadgeMeta: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  txtMetaSelecionada: { fontSize: 13, fontWeight: '700', color: '#334155', flex: 1 },
+  btnAbrirEditMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  txtBtnAbrirEditMeta: { fontSize: 12, fontWeight: '700', color: '#2563EB' },
+  btnSalvarMetaEdit: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, padding: 12, borderRadius: 8 },
+  btnExcluirMeta: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
+  cardSessao: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, marginBottom: 8, borderLeftWidth: 4, borderWidth: 1, borderColor: '#E2E8F0' },
+  rowHistoricoCard: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  badgeIconeHist: { width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  sessaoObjetivo: { fontSize: 14, fontWeight: 'bold', color: '#1E293B' },
+  sessaoDataHora: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  sessaoPasso: { fontSize: 12, fontWeight: '700', marginTop: 4 },
+  btnVoltar: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  txtVoltar: { fontSize: 15, fontWeight: 'bold', color: '#2563EB' },
+  btnIconeAcao: { backgroundColor: '#FFF', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' },
+  rowTopoSessao: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  badgeMetaGrande: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  labelDetalhe: { fontSize: 12, fontWeight: 'bold', color: '#64748B', marginTop: 12, marginBottom: 4 },
+  valorDetalhe: { fontSize: 14, color: '#1E293B', lineHeight: 20 },
+  rowStatusEdit: { flexDirection: 'row', gap: 8 },
+  btnStatus: { flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center' },
+  btnRealizadaAtivo: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
+  btnAgendadaAtivo: { backgroundColor: '#D97706', borderColor: '#D97706' },
+  txtStatus: { fontWeight: 'bold', color: '#475569' },
+  chipPasso: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: '#E2E8F0', marginRight: 8 },
+  chipPassoTxt: { fontSize: 12, fontWeight: '600', color: '#1E293B' },
+  btnPicker: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' },
+  txtPicker: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  btnSalvarHist: { backgroundColor: '#2563EB', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
 });
