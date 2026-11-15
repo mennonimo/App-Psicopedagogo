@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { initDatabase } from './src/database/db';
 import PacientesScreen from './src/screens/PacientesScreen';
 import NovaSessaoScreen from './src/screens/NovaSessaoScreen';
+import AgendaScreen from './src/screens/AgendaScreen';
 
 // Telas provisórias para as outras 3 abas
 const TelaTeste = ({ titulo }) => (
@@ -15,7 +16,7 @@ const TelaTeste = ({ titulo }) => (
   </View>
 );
 
-const AgendaScreen = () => <TelaTeste titulo="1. Agenda e Calendário" />;
+
 const BackupScreen = () => <TelaTeste titulo="4. Backup Google Drive" />;
 
 const Tab = createBottomTabNavigator();
