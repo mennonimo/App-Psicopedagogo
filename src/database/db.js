@@ -73,6 +73,18 @@ export const initDatabase = () => {
       endereco TEXT DEFAULT '',
       cidade TEXT DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS relatorios_gerados (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      paciente_id INTEGER NOT NULL,
+      paciente_nome TEXT NOT NULL,
+      nome_arquivo TEXT NOT NULL,
+      uri_arquivo TEXT NOT NULL,
+      data_inicio TEXT NOT NULL,
+      data_fim TEXT NOT NULL,
+      criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (paciente_id) REFERENCES pacientes (id) ON DELETE CASCADE
+    );
   `);
 
   db.runSync('INSERT OR IGNORE INTO perfil_profissional (id) VALUES (1);');
@@ -92,6 +104,7 @@ export const initDatabase = () => {
     "ALTER TABLE sessoes ADD COLUMN atividade_realizada TEXT DEFAULT '';",
     "ALTER TABLE perfil_profissional ADD COLUMN logo_clinica TEXT;",
     "ALTER TABLE perfil_profissional ADD COLUMN imagem_rodape TEXT;",
+    "ALTER TABLE perfil_profissional ADD COLUMN pasta_relatorios TEXT DEFAULT '';",
   ];
 
   migracoes.forEach((sql) => {
@@ -377,16 +390,51 @@ export const listarAgendaPorData = (dataSelecionada) => {
             metas.icone AS meta_icone,
             metas.cor AS meta_cor,
             metas.alcancada AS meta_alcancada
-     FROM sessoes 
-     INNER JOIN pacientes ON sessoes.paciente_id = pacientes.id 
-     LEFT JOIN passos_trilha ON sessoes.passo_id = passos_trilha.id
-     LEFT JOIN metas ON COALESCE(sessoes.meta_id, passos_trilha.meta_id) = metas.id
-     WHERE sessoes.data = ? 
-     ORDER BY sessoes.horario_inicio ASC`,
+      FROM sessoes 
+      INNER JOIN pacientes ON sessoes.paciente_id = pacientes.id 
+      LEFT JOIN passos_trilha ON sessoes.passo_id = passos_trilha.id
+      LEFT JOIN metas ON COALESCE(sessoes.meta_id, passos_trilha.meta_id) = metas.id
+      WHERE sessoes.data = ? 
+      ORDER BY sessoes.horario_inicio ASC`,
     [dataSelecionada]
   );
 };
 
 export const listarDatasComSessoes = () => {
   return db.getAllSync('SELECT DISTINCT data, status FROM sessoes');
+};
+
+// --- RELATÓRIOS E PASTA DE EXPORTAÇÃO ---
+export const salvarPastaRelatorios = (uriPasta) => {
+  return db.runSync(
+    'UPDATE perfil_profissional SET pasta_relatorios = ? WHERE id = 1',
+    [uriPasta]
+  );
+};
+
+export const registrarRelatorioGerado = ({
+  paciente_id,
+  paciente_nome,
+  nome_arquivo,
+  uri_arquivo,
+  data_inicio,
+  data_fim,
+}) => {
+  const result = db.runSync(
+    `INSERT INTO relatorios_gerados (
+      paciente_id, paciente_nome, nome_arquivo, uri_arquivo, data_inicio, data_fim
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [paciente_id, paciente_nome, nome_arquivo, uri_arquivo, data_inicio, data_fim]
+  );
+  return result.lastInsertRowId;
+};
+
+export const listarRelatoriosGerados = () => {
+  return db.getAllSync(
+    'SELECT * FROM relatorios_gerados ORDER BY paciente_nome ASC, id DESC'
+  );
+};
+
+export const excluirRelatorioGerado = (id) => {
+  return db.runSync('DELETE FROM relatorios_gerados WHERE id = ?', [id]);
 };
