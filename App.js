@@ -1,38 +1,47 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { initDatabase } from './src/database/db';
+import { initDatabase, buscarPerfilProfissional } from './src/database/db';
+
+import AgendaScreen from './src/screens/AgendaScreen';
 import PacientesScreen from './src/screens/PacientesScreen';
 import NovaSessaoScreen from './src/screens/NovaSessaoScreen';
-import AgendaScreen from './src/screens/AgendaScreen';
+import PerfilModal from './src/components/PerfilModal';
 
-// Telas provisórias para as outras 3 abas
-const TelaTeste = ({ titulo }) => (
+const BackupScreen = () => (
   <View style={styles.center}>
-    <Text style={styles.text}>{titulo}</Text>
+    <Text style={styles.text}>4. Backup e Relatórios</Text>
   </View>
 );
 
-
-const BackupScreen = () => <TelaTeste titulo="4. Backup Google Drive" />;
-
 const Tab = createBottomTabNavigator();
 
-function MinhasAbas() {
-  // Pega a medida exata dos botões do sistema Android/iOS
+function MinhasAbas({ perfil, onAbrirPerfil }) {
   const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: true,
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={onAbrirPerfil}
+            style={styles.btnPerfilTopo}
+            activeOpacity={0.7}
+          >
+            {perfil?.foto_perfil ? (
+              <Image source={{ uri: perfil.foto_perfil }} style={styles.avatarTopo} />
+            ) : (
+              <Ionicons name="person-circle-outline" size={32} color="#2563EB" />
+            )}
+          </TouchableOpacity>
+        ),
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
         tabBarStyle: {
-          // Soma 60px da barra + a altura exata dos botões do seu Android
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           paddingTop: 6,
@@ -60,14 +69,30 @@ function MinhasAbas() {
 }
 
 export default function App() {
+  const [dbPronto, setDbPronto] = useState(false);
+  const [perfil, setPerfil] = useState(null);
+  const [modalPerfilVisivel, setModalPerfilVisivel] = useState(false);
+
   useEffect(() => {
     initDatabase();
+    setPerfil(buscarPerfilProfissional());
+    setDbPronto(true);
   }, []);
+
+  if (!dbPronto) return null;
 
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <MinhasAbas />
+        <MinhasAbas
+          perfil={perfil}
+          onAbrirPerfil={() => setModalPerfilVisivel(true)}
+        />
+        <PerfilModal
+          visible={modalPerfilVisivel}
+          onClose={() => setModalPerfilVisivel(false)}
+          onPerfilSalvo={(novoPerfil) => setPerfil(novoPerfil)}
+        />
       </NavigationContainer>
     </SafeAreaProvider>
   );
@@ -76,4 +101,12 @@ export default function App() {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
   text: { fontSize: 18, fontWeight: '600', color: '#1E293B' },
+  btnPerfilTopo: { marginRight: 16 },
+  avatarTopo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: '#2563EB',
+  },
 });

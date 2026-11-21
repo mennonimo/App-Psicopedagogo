@@ -51,7 +51,25 @@ export const initDatabase = () => {
       marco_avanco TEXT,
       FOREIGN KEY (paciente_id) REFERENCES pacientes (id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS perfil_profissional (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      foto_perfil TEXT,
+      nome TEXT DEFAULT '',
+      especialidade TEXT DEFAULT 'Psicopedagogia',
+      cpf TEXT DEFAULT '',
+      telefone TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      clinica_nome TEXT DEFAULT '',
+      instagram TEXT DEFAULT '',
+      site TEXT DEFAULT '',
+      endereco TEXT DEFAULT '',
+      cidade TEXT DEFAULT ''
+    );
   `);
+
+  // Garante o registro único (id = 1) do perfil profissional
+  db.runSync('INSERT OR IGNORE INTO perfil_profissional (id) VALUES (1);');
 
   const migracoes = [
     "ALTER TABLE metas ADD COLUMN icone TEXT DEFAULT 'flag';",
@@ -69,6 +87,51 @@ export const initDatabase = () => {
       // Coluna já existe
     }
   });
+};
+
+// --- PERFIL DO PROFISSIONAL ---
+export const buscarPerfilProfissional = () => {
+  const perfil = db.getFirstSync('SELECT * FROM perfil_profissional WHERE id = 1');
+  return perfil || {
+    foto_perfil: null,
+    nome: '',
+    especialidade: 'Psicopedagogia',
+    cpf: '',
+    telefone: '',
+    email: '',
+    clinica_nome: '',
+    instagram: '',
+    site: '',
+    endereco: '',
+    cidade: '',
+  };
+};
+
+export const salvarPerfilProfissional = (dados) => {
+  const {
+    foto_perfil = null,
+    nome = '',
+    especialidade = '',
+    cpf = '',
+    telefone = '',
+    email = '',
+    clinica_nome = '',
+    instagram = '',
+    site = '',
+    endereco = '',
+    cidade = '',
+  } = dados;
+
+  return db.runSync(
+    `UPDATE perfil_profissional SET
+      foto_perfil = ?, nome = ?, especialidade = ?, cpf = ?, telefone = ?,
+      email = ?, clinica_nome = ?, instagram = ?, site = ?, endereco = ?, cidade = ?
+     WHERE id = 1`,
+    [
+      foto_perfil, nome, especialidade, cpf, telefone,
+      email, clinica_nome, instagram, site, endereco, cidade
+    ]
+  );
 };
 
 // --- PACIENTES ---
