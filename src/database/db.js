@@ -9,6 +9,8 @@ export const initDatabase = () => {
     CREATE TABLE IF NOT EXISTS pacientes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome TEXT NOT NULL,
+      data_nascimento TEXT DEFAULT '',
+      responsavel TEXT DEFAULT '',
       criado_em TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -41,7 +43,10 @@ export const initDatabase = () => {
       meta_id INTEGER,
       passo_id INTEGER,
       status TEXT DEFAULT 'agendada',
+      modalidade TEXT DEFAULT 'Presencial',
+      forma TEXT DEFAULT 'Individual',
       objetivo_titulo TEXT,
+      atividade_realizada TEXT DEFAULT '',
       data TEXT NOT NULL,
       horario_inicio TEXT NOT NULL,
       horario_termino TEXT NOT NULL,
@@ -55,6 +60,8 @@ export const initDatabase = () => {
     CREATE TABLE IF NOT EXISTS perfil_profissional (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       foto_perfil TEXT,
+      logo_clinica TEXT,
+      imagem_rodape TEXT,
       nome TEXT DEFAULT '',
       especialidade TEXT DEFAULT 'Psicopedagogia',
       cpf TEXT DEFAULT '',
@@ -68,16 +75,23 @@ export const initDatabase = () => {
     );
   `);
 
-  // Garante o registro único (id = 1) do perfil profissional
   db.runSync('INSERT OR IGNORE INTO perfil_profissional (id) VALUES (1);');
 
+  // Migrações seguras para bancos já existentes
   const migracoes = [
+    "ALTER TABLE pacientes ADD COLUMN data_nascimento TEXT DEFAULT '';",
+    "ALTER TABLE pacientes ADD COLUMN responsavel TEXT DEFAULT '';",
     "ALTER TABLE metas ADD COLUMN icone TEXT DEFAULT 'flag';",
     "ALTER TABLE metas ADD COLUMN cor TEXT DEFAULT '#2563EB';",
     "ALTER TABLE passos_trilha ADD COLUMN icone TEXT DEFAULT 'footsteps';",
     "ALTER TABLE passos_trilha ADD COLUMN cor TEXT DEFAULT '#2563EB';",
     "ALTER TABLE sessoes ADD COLUMN meta_id INTEGER;",
     "ALTER TABLE sessoes ADD COLUMN passo_id INTEGER;",
+    "ALTER TABLE sessoes ADD COLUMN modalidade TEXT DEFAULT 'Presencial';",
+    "ALTER TABLE sessoes ADD COLUMN forma TEXT DEFAULT 'Individual';",
+    "ALTER TABLE sessoes ADD COLUMN atividade_realizada TEXT DEFAULT '';",
+    "ALTER TABLE perfil_profissional ADD COLUMN logo_clinica TEXT;",
+    "ALTER TABLE perfil_profissional ADD COLUMN imagem_rodape TEXT;",
   ];
 
   migracoes.forEach((sql) => {
@@ -94,6 +108,8 @@ export const buscarPerfilProfissional = () => {
   const perfil = db.getFirstSync('SELECT * FROM perfil_profissional WHERE id = 1');
   return perfil || {
     foto_perfil: null,
+    logo_clinica: null,
+    imagem_rodape: null,
     nome: '',
     especialidade: 'Psicopedagogia',
     cpf: '',
@@ -110,6 +126,8 @@ export const buscarPerfilProfissional = () => {
 export const salvarPerfilProfissional = (dados) => {
   const {
     foto_perfil = null,
+    logo_clinica = null,
+    imagem_rodape = null,
     nome = '',
     especialidade = '',
     cpf = '',
@@ -124,24 +142,40 @@ export const salvarPerfilProfissional = (dados) => {
 
   return db.runSync(
     `UPDATE perfil_profissional SET
-      foto_perfil = ?, nome = ?, especialidade = ?, cpf = ?, telefone = ?,
-      email = ?, clinica_nome = ?, instagram = ?, site = ?, endereco = ?, cidade = ?
+      foto_perfil = ?, logo_clinica = ?, imagem_rodape = ?, nome = ?, especialidade = ?,
+      cpf = ?, telefone = ?, email = ?, clinica_nome = ?, instagram = ?, site = ?,
+      endereco = ?, cidade = ?
      WHERE id = 1`,
     [
-      foto_perfil, nome, especialidade, cpf, telefone,
-      email, clinica_nome, instagram, site, endereco, cidade
+      foto_perfil, logo_clinica, imagem_rodape, nome, especialidade,
+      cpf, telefone, email, clinica_nome, instagram, site,
+      endereco, cidade
     ]
   );
 };
 
 // --- PACIENTES ---
-export const criarPaciente = (nome) => {
-  const result = db.runSync('INSERT INTO pacientes (nome) VALUES (?)', [nome]);
+export const criarPaciente = (nome, data_nascimento = '', responsavel = '') => {
+  const result = db.runSync(
+    'INSERT INTO pacientes (nome, data_nascimento, responsavel) VALUES (?, ?, ?)',
+    [nome, data_nascimento, responsavel]
+  );
   return result.lastInsertRowId;
+};
+
+export const editarPaciente = (id, nome, data_nascimento = '', responsavel = '') => {
+  return db.runSync(
+    'UPDATE pacientes SET nome = ?, data_nascimento = ?, responsavel = ? WHERE id = ?',
+    [nome, data_nascimento, responsavel, id]
+  );
 };
 
 export const listarPacientes = () => {
   return db.getAllSync('SELECT * FROM pacientes ORDER BY nome ASC');
+};
+
+export const buscarPacientePorId = (id) => {
+  return db.getFirstSync('SELECT * FROM pacientes WHERE id = ?', [id]);
 };
 
 // --- METAS E PASSOS DA TRILHA ---
@@ -209,14 +243,28 @@ export const buscarPassosPorMeta = (metaId) => {
   );
 };
 
-// --- SESSÕES E AGENDA ---
+export const buscarTodosPassosPaciente = (pacienteId) => {
+  return db.getAllSync(
+    `SELECT passos_trilha.*, metas.descricao AS meta_titulo
+     FROM passos_trilha
+     INNER JOIN metas ON passos_trilha.meta_id = metas.id
+     WHERE passos_trilha.paciente_id = ?
+     ORDER BY metas.id ASC, passos_trilha.id ASC`,
+    [pacienteId]
+  );
+};
+
+// --- SESSÕES, AGENDA E CONSULTA DE RELATÓRIO ---
 export const salvarSessao = (dados) => {
   const {
     paciente_id,
     meta_id = null,
     passo_id = null,
     status = 'realizada',
+    modalidade = 'Presencial',
+    forma = 'Individual',
     objetivo_titulo = '',
+    atividade_realizada = '',
     data,
     horario_inicio,
     horario_termino,
@@ -228,12 +276,16 @@ export const salvarSessao = (dados) => {
 
   return db.runSync(
     `INSERT INTO sessoes (
-      paciente_id, meta_id, passo_id, status, objetivo_titulo, data,
-      horario_inicio, horario_termino, material_utilizado, relatorio_diario, anotacoes, marco_avanco
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      paciente_id, meta_id, passo_id, status, modalidade, forma,
+      objetivo_titulo, atividade_realizada, data,
+      horario_inicio, horario_termino, material_utilizado,
+      relatorio_diario, anotacoes, marco_avanco
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      paciente_id, meta_id, passo_id, status, objetivo_titulo, data,
-      horario_inicio, horario_termino, material_utilizado, relatorio_diario, anotacoes, marco_avanco
+      paciente_id, meta_id, passo_id, status, modalidade, forma,
+      objetivo_titulo, atividade_realizada, data,
+      horario_inicio, horario_termino, material_utilizado,
+      relatorio_diario, anotacoes, marco_avanco
     ]
   );
 };
@@ -243,7 +295,10 @@ export const atualizarSessaoCompleta = (id, dados) => {
     meta_id = null,
     passo_id = null,
     status,
+    modalidade = 'Presencial',
+    forma = 'Individual',
     objetivo_titulo,
+    atividade_realizada = '',
     data,
     horario_inicio,
     horario_termino,
@@ -254,13 +309,15 @@ export const atualizarSessaoCompleta = (id, dados) => {
 
   return db.runSync(
     `UPDATE sessoes SET
-      meta_id = ?, passo_id = ?, status = ?, objetivo_titulo = ?,
-      data = ?, horario_inicio = ?, horario_termino = ?, material_utilizado = ?,
+      meta_id = ?, passo_id = ?, status = ?, modalidade = ?, forma = ?,
+      objetivo_titulo = ?, atividade_realizada = ?, data = ?,
+      horario_inicio = ?, horario_termino = ?, material_utilizado = ?,
       relatorio_diario = ?, anotacoes = ?
      WHERE id = ?`,
     [
-      meta_id, passo_id, status, objetivo_titulo,
-      data, horario_inicio, horario_termino, material_utilizado,
+      meta_id, passo_id, status, modalidade, forma,
+      objetivo_titulo, atividade_realizada, data,
+      horario_inicio, horario_termino, material_utilizado,
       relatorio_diario, anotacoes, id
     ]
   );
@@ -288,6 +345,24 @@ export const listarSessoesPaciente = (pacienteId) => {
      WHERE sessoes.paciente_id = ?
      ORDER BY sessoes.data DESC, sessoes.horario_inicio DESC`,
     [pacienteId]
+  );
+};
+
+export const listarSessoesPorPeriodo = (pacienteId, dataInicio, dataFim) => {
+  return db.getAllSync(
+    `SELECT sessoes.*, 
+            passos_trilha.titulo AS passo_titulo,
+            passos_trilha.concluido AS passo_concluido,
+            metas.descricao AS meta_titulo
+     FROM sessoes
+     LEFT JOIN passos_trilha ON sessoes.passo_id = passos_trilha.id
+     LEFT JOIN metas ON COALESCE(sessoes.meta_id, passos_trilha.meta_id) = metas.id
+     WHERE sessoes.paciente_id = ?
+       AND sessoes.status = 'realizada'
+       AND sessoes.data >= ?
+       AND sessoes.data <= ?
+     ORDER BY sessoes.data ASC, sessoes.horario_inicio ASC`,
+    [pacienteId, dataInicio, dataFim]
   );
 };
 

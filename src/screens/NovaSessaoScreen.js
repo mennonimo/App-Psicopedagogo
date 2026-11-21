@@ -18,6 +18,8 @@ export default function NovaSessaoScreen() {
   const [pacientes, setPacientes] = useState([]);
   const [pacienteId, setPacienteId] = useState(null);
   const [status, setStatus] = useState('realizada');
+  const [modalidade, setModalidade] = useState('Presencial');
+  const [forma, setForma] = useState('Individual');
 
   // Meta e Passo da Trilha
   const [metas, setMetas] = useState([]);
@@ -26,14 +28,15 @@ export default function NovaSessaoScreen() {
   const [passoId, setPassoId] = useState(null);
   const [concluirPassoHoje, setConcluirPassoHoje] = useState(false);
 
-  // Data e Hora
+  // Data e Hora (60 min padrão)
   const [dataObj, setDataObj] = useState(new Date());
   const [horaInicioObj, setHoraInicioObj] = useState(new Date());
-  const [horaFimObj, setHoraFimObj] = useState(new Date(Date.now() + 50 * 60000));
+  const [horaFimObj, setHoraFimObj] = useState(new Date(Date.now() + 60 * 60000));
   const [mostrarPicker, setMostrarPicker] = useState(null);
 
   // Campos de Texto
   const [objetivo, setObjetivo] = useState('');
+  const [atividadeRealizada, setAtividadeRealizada] = useState('');
   const [material, setMaterial] = useState('');
   const [relatorio, setRelatorio] = useState('');
   const [anotacoes, setAnotacoes] = useState('');
@@ -107,7 +110,10 @@ export default function NovaSessaoScreen() {
       meta_id: metaId,
       passo_id: passoId,
       status,
+      modalidade,
+      forma,
       objetivo_titulo: objetivo.trim() || 'Sessão Agendada',
+      atividade_realizada: atividadeRealizada.trim(),
       data: formatarData(dataObj),
       horario_inicio: formatarHora(horaInicioObj),
       horario_termino: formatarHora(horaFimObj),
@@ -123,6 +129,7 @@ export default function NovaSessaoScreen() {
     Alert.alert('Sucesso', 'Atendimento salvo com sucesso!');
 
     setObjetivo('');
+    setAtividadeRealizada('');
     setMaterial('');
     setRelatorio('');
     setAnotacoes('');
@@ -266,6 +273,43 @@ export default function NovaSessaoScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* MODALIDADE E FORMA */}
+        <View style={styles.rowDupla}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Modalidade</Text>
+            <View style={styles.rowMini}>
+              {['Presencial', 'Online'].map((mod) => (
+                <TouchableOpacity
+                  key={mod}
+                  style={[styles.btnMini, modalidade === mod && styles.btnMiniAtivo]}
+                  onPress={() => setModalidade(mod)}
+                >
+                  <Text style={[styles.txtMini, modalidade === mod && styles.textoStatusAtivo]}>
+                    {mod}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Forma</Text>
+            <View style={styles.rowMini}>
+              {['Individual', 'Grupo'].map((frm) => (
+                <TouchableOpacity
+                  key={frm}
+                  style={[styles.btnMini, forma === frm && styles.btnMiniAtivo]}
+                  onPress={() => setForma(frm)}
+                >
+                  <Text style={[styles.txtMini, forma === frm && styles.textoStatusAtivo]}>
+                    {frm}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
         <View style={styles.rowDataHora}>
           <View style={{ flex: 1.2 }}>
             <Text style={styles.label}>Data</Text>
@@ -307,7 +351,7 @@ export default function NovaSessaoScreen() {
           />
         )}
 
-        <Text style={styles.label}>Objetivo da Sessão (Título)</Text>
+        <Text style={styles.label}>Objetivo da Sessão (Título curto na Agenda)</Text>
         <TextInput
           style={styles.input}
           placeholder="Ex: Atividade de leitura guiada"
@@ -315,28 +359,38 @@ export default function NovaSessaoScreen() {
           onChangeText={setObjetivo}
         />
 
-        <Text style={styles.label}>Material Utilizado</Text>
+        <Text style={styles.label}>Técnica ou Atividade Realizada (Vai na tabela do PDF)</Text>
+        <TextInput
+          style={[styles.input, styles.areaTexto]}
+          placeholder="Ex: Jogos terapêuticos para estimulação da atenção, concentração e raciocínio lógico."
+          multiline
+          numberOfLines={3}
+          value={atividadeRealizada}
+          onChangeText={setAtividadeRealizada}
+        />
+
+        <Text style={styles.label}>Material Utilizado (Separado por vírgula)</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ex: Jogos lógicos, fichas de leitura..."
+          placeholder="Ex: Grãos coloridos, Tablet, Alfabeto móvel, Lousa..."
           value={material}
           onChangeText={setMaterial}
         />
 
-        <Text style={styles.label}>Relatório Diário</Text>
+        <Text style={styles.label}>Relatório Diário (Base da Evolução no PDF)</Text>
         <TextInput
           style={[styles.input, styles.areaTexto]}
-          placeholder="Disposição e resumo do dia..."
+          placeholder="Como o paciente respondeu às atividades, autonomia, apoio necessário..."
           multiline
           numberOfLines={3}
           value={relatorio}
           onChangeText={setRelatorio}
         />
 
-        <Text style={styles.label}>Anotações da Sessão</Text>
+        <Text style={styles.label}>Anotações da Sessão (Apenas uso interno)</Text>
         <TextInput
           style={[styles.input, styles.areaTextoMaior]}
-          placeholder="Observações detalhadas do atendimento..."
+          placeholder="Observações privadas do atendimento..."
           multiline
           numberOfLines={4}
           value={anotacoes}
@@ -394,6 +448,11 @@ const styles = StyleSheet.create({
   btnStatusAgendada: { backgroundColor: '#D97706', borderColor: '#D97706' },
   textoStatus: { fontWeight: '600', color: '#475569' },
   textoStatusAtivo: { color: '#FFF' },
+  rowDupla: { flexDirection: 'row', gap: 10 },
+  rowMini: { flexDirection: 'row', gap: 6 },
+  btnMini: { flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', backgroundColor: '#FFF' },
+  btnMiniAtivo: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  txtMini: { fontSize: 12, fontWeight: '700', color: '#475569' },
   rowDataHora: { flexDirection: 'row', gap: 8 },
   btnPicker: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1' },
   textoPicker: { fontSize: 14, fontWeight: '600', color: '#1E293B' },

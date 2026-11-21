@@ -13,6 +13,9 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
   const [modoEdicao, setModoEdicao] = useState(false);
 
   const [fotoPerfil, setFotoPerfil] = useState(null);
+  const [logoClinica, setLogoClinica] = useState(null);
+  const [imagemRodape, setImagemRodape] = useState(null);
+
   const [nome, setNome] = useState('');
   const [especialidade, setEspecialidade] = useState('');
   const [cpf, setCpf] = useState('');
@@ -28,6 +31,8 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
     if (visible) {
       const dados = buscarPerfilProfissional();
       setFotoPerfil(dados.foto_perfil || null);
+      setLogoClinica(dados.logo_clinica || null);
+      setImagemRodape(dados.imagem_rodape || null);
       setNome(dados.nome || '');
       setEspecialidade(dados.especialidade || 'Psicopedagogia');
       setCpf(dados.cpf || '');
@@ -39,57 +44,60 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
       setInstagram(dados.instagram || '');
       setSite(dados.site || '');
 
-      // Se ainda não cadastrou o nome, abre direto no modo edição
       setModoEdicao(!dados.nome);
     }
   }, [visible]);
 
-  const escolherFoto = async () => {
+  const montarObjetoAtual = (sobrescrever = {}) => ({
+    foto_perfil: fotoPerfil,
+    logo_clinica: logoClinica,
+    imagem_rodape: imagemRodape,
+    nome: nome.trim(),
+    especialidade: especialidade.trim() || 'Psicopedagogia',
+    cpf: cpf.trim(),
+    telefone: telefone.trim(),
+    email: email.trim(),
+    clinica_nome: clinicaNome.trim(),
+    instagram: instagram.trim(),
+    site: site.trim(),
+    endereco: endereco.trim(),
+    cidade: cidade.trim(),
+    ...sobrescrever,
+  });
+
+  const escolherImagem = async (tipo) => {
     const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissao.granted) {
-      Alert.alert('Permissão necessária', 'Permita o acesso à galeria para escolher uma foto de perfil.');
+      Alert.alert('Permissão necessária', 'Permita o acesso à galeria para escolher uma imagem.');
       return;
     }
 
+    const isAvatar = tipo === 'foto_perfil';
     const resultado = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
+      allowsEditing: isAvatar,
+      aspect: isAvatar ? [1, 1] : undefined,
+      quality: isAvatar ? 0.5 : 0.7,
       base64: true,
     });
 
     if (!resultado.canceled && resultado.assets && resultado.assets[0]) {
       const asset = resultado.assets[0];
+      const mime = asset.mimeType || 'image/jpeg';
       const imagemFinal = asset.base64
-        ? `data:image/jpeg;base64,${asset.base64}`
+        ? `data:${mime};base64,${asset.base64}`
         : asset.uri;
 
-      setFotoPerfil(imagemFinal);
+      if (tipo === 'foto_perfil') setFotoPerfil(imagemFinal);
+      if (tipo === 'logo_clinica') setLogoClinica(imagemFinal);
+      if (tipo === 'imagem_rodape') setImagemRodape(imagemFinal);
 
-      // Se trocar a foto fora do modo edição, salva imediatamente
       if (!modoEdicao) {
-        const atualizado = {
-          foto_perfil: imagemFinal,
-          nome,
-          especialidade,
-          cpf,
-          telefone,
-          email,
-          clinica_nome: clinicaNome,
-          instagram,
-          site,
-          endereco,
-          cidade,
-        };
+        const atualizado = montarObjetoAtual({ [tipo]: imagemFinal });
         salvarPerfilProfissional(atualizado);
         if (onPerfilSalvo) onPerfilSalvo(atualizado);
       }
     }
-  };
-
-  const removerFoto = () => {
-    setFotoPerfil(null);
   };
 
   const handleSalvar = () => {
@@ -98,20 +106,7 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
       return;
     }
 
-    const dadosAtualizados = {
-      foto_perfil: fotoPerfil,
-      nome: nome.trim(),
-      especialidade: especialidade.trim() || 'Psicopedagogia',
-      cpf: cpf.trim(),
-      telefone: telefone.trim(),
-      email: email.trim(),
-      clinica_nome: clinicaNome.trim(),
-      instagram: instagram.trim(),
-      site: site.trim(),
-      endereco: endereco.trim(),
-      cidade: cidade.trim(),
-    };
-
+    const dadosAtualizados = montarObjetoAtual();
     salvarPerfilProfissional(dadosAtualizados);
     if (onPerfilSalvo) onPerfilSalvo(dadosAtualizados);
     setModoEdicao(false);
@@ -136,7 +131,6 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
         style={[styles.container, { paddingTop: insets.top + 12 }]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Cabeçalho do Modal */}
         <View style={styles.header}>
           <View>
             <Text style={styles.subtitulo}>Conta & Relatórios</Text>
@@ -166,9 +160,13 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
           contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Bloco da Foto de Perfil */}
+          {/* Foto de Perfil */}
           <View style={styles.avatarSection}>
-            <TouchableOpacity onPress={escolherFoto} activeOpacity={0.8} style={styles.avatarWrapper}>
+            <TouchableOpacity
+              onPress={() => escolherImagem('foto_perfil')}
+              activeOpacity={0.8}
+              style={styles.avatarWrapper}
+            >
               {fotoPerfil ? (
                 <Image source={{ uri: fotoPerfil }} style={styles.avatarImg} />
               ) : (
@@ -185,15 +183,15 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
             <Text style={styles.especDestaque}>{especialidade || 'Psicopedagogia'}</Text>
 
             {modoEdicao && fotoPerfil && (
-              <TouchableOpacity onPress={removerFoto} style={styles.btnRemoverFoto}>
-                <Text style={styles.txtRemoverFoto}>Remover foto</Text>
+              <TouchableOpacity onPress={() => setFotoPerfil(null)} style={styles.btnRemoverFoto}>
+                <Text style={styles.txtRemoverFoto}>Remover foto de perfil</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {modoEdicao ? (
             <>
-              {/* EDIÇÃO: DADOS DO PROFISSIONAL */}
+              {/* DADOS DO PROFISSIONAL */}
               <View style={styles.card}>
                 <Text style={styles.secaoTitulo}>Dados do Profissional</Text>
 
@@ -242,7 +240,7 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
                 />
               </View>
 
-              {/* EDIÇÃO: DADOS DA CLÍNICA E RODAPÉ DOS RELATÓRIOS */}
+              {/* CLÍNICA E RODAPÉ */}
               <View style={styles.card}>
                 <Text style={styles.secaoTitulo}>Clínica & Rodapé dos Relatórios</Text>
 
@@ -273,7 +271,7 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
                 <Text style={styles.label}>Instagram</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Ex: @clinica_terapias"
+                  placeholder="Ex: clinica_terapias"
                   autoCapitalize="none"
                   value={instagram}
                   onChangeText={setInstagram}
@@ -289,6 +287,69 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
                 />
               </View>
 
+              {/* IMAGENS DO PDF */}
+              <View style={styles.card}>
+                <Text style={styles.secaoTitulo}>Imagens do Relatório (PDF)</Text>
+
+                <Text style={styles.label}>Logo do Cabeçalho da Clínica</Text>
+                {logoClinica ? (
+                  <View style={styles.previewBox}>
+                    <Image source={{ uri: logoClinica }} style={styles.imgPreview} resizeMode="contain" />
+                    <View style={styles.rowBotoesImg}>
+                      <TouchableOpacity
+                        style={styles.btnSecundario}
+                        onPress={() => escolherImagem('logo_clinica')}
+                      >
+                        <Text style={styles.txtBtnSecundario}>Trocar Logo</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnPerigo}
+                        onPress={() => setLogoClinica(null)}
+                      >
+                        <Text style={styles.txtBtnPerigo}>Remover</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.btnUpload}
+                    onPress={() => escolherImagem('logo_clinica')}
+                  >
+                    <Ionicons name="image-outline" size={20} color="#2563EB" />
+                    <Text style={styles.txtBtnUpload}>Selecionar Logo da Galeria</Text>
+                  </TouchableOpacity>
+                )}
+
+                <Text style={styles.label}>Imagem / Arte de Rodapé (Opcional)</Text>
+                {imagemRodape ? (
+                  <View style={styles.previewBox}>
+                    <Image source={{ uri: imagemRodape }} style={styles.imgPreview} resizeMode="contain" />
+                    <View style={styles.rowBotoesImg}>
+                      <TouchableOpacity
+                        style={styles.btnSecundario}
+                        onPress={() => escolherImagem('imagem_rodape')}
+                      >
+                        <Text style={styles.txtBtnSecundario}>Trocar Rodapé</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnPerigo}
+                        onPress={() => setImagemRodape(null)}
+                      >
+                        <Text style={styles.txtBtnPerigo}>Remover</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.btnUpload}
+                    onPress={() => escolherImagem('imagem_rodape')}
+                  >
+                    <Ionicons name="image-outline" size={20} color="#2563EB" />
+                    <Text style={styles.txtBtnUpload}>Selecionar Imagem de Rodapé</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
               <TouchableOpacity style={styles.btnSalvar} onPress={handleSalvar}>
                 <Ionicons name="checkmark-circle" size={22} color="#FFF" />
                 <Text style={styles.txtSalvar}>Salvar Perfil</Text>
@@ -296,7 +357,6 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
             </>
           ) : (
             <>
-              {/* VISUALIZAÇÃO: DADOS DO PROFISSIONAL */}
               <View style={styles.card}>
                 <Text style={styles.secaoTitulo}>Dados do Profissional</Text>
                 <ItemVisualizacao icone="card-outline" label="CPF" valor={cpf} />
@@ -304,7 +364,6 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
                 <ItemVisualizacao icone="mail-outline" label="E-mail" valor={email} />
               </View>
 
-              {/* VISUALIZAÇÃO: CLÍNICA E RODAPÉ */}
               <View style={styles.card}>
                 <Text style={styles.secaoTitulo}>Clínica & Rodapé dos Relatórios</Text>
                 <ItemVisualizacao icone="business-outline" label="Clínica" valor={clinicaNome} />
@@ -314,9 +373,26 @@ export default function PerfilModal({ visible, onClose, onPerfilSalvo }) {
                 <ItemVisualizacao icone="globe-outline" label="Site" valor={site} />
               </View>
 
+              <View style={styles.card}>
+                <Text style={styles.secaoTitulo}>Imagens do Relatório (PDF)</Text>
+                <Text style={styles.labelInfo}>Logo do Cabeçalho</Text>
+                {logoClinica ? (
+                  <Image source={{ uri: logoClinica }} style={styles.imgPreviewView} resizeMode="contain" />
+                ) : (
+                  <Text style={styles.valorVazio}>Nenhuma logo selecionada</Text>
+                )}
+
+                <Text style={[styles.labelInfo, { marginTop: 12 }]}>Imagem de Rodapé</Text>
+                {imagemRodape ? (
+                  <Image source={{ uri: imagemRodape }} style={styles.imgPreviewView} resizeMode="contain" />
+                ) : (
+                  <Text style={styles.valorVazio}>Nenhuma arte de rodapé selecionada</Text>
+                )}
+              </View>
+
               <TouchableOpacity style={styles.btnEditarGrande} onPress={() => setModoEdicao(true)}>
                 <Ionicons name="create-outline" size={20} color="#2563EB" />
-                <Text style={styles.txtEditarGrande}>Editar Informações do Perfil</Text>
+                <Text style={styles.txtEditarGrande}>Editar Informações e Imagens</Text>
               </TouchableOpacity>
             </>
           )}
@@ -400,6 +476,47 @@ const styles = StyleSheet.create({
   },
   labelInfo: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   valorInfo: { fontSize: 14, color: '#0F172A', marginTop: 1 },
+  valorVazio: { fontSize: 13, color: '#94A3B8', marginTop: 4 },
+  btnUpload: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  txtBtnUpload: { color: '#2563EB', fontWeight: '700', fontSize: 13 },
+  previewBox: {
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  imgPreview: { width: '100%', height: 90, marginBottom: 10 },
+  imgPreviewView: { width: '100%', height: 80, marginTop: 6, backgroundColor: '#F8FAFC', borderRadius: 8 },
+  rowBotoesImg: { flexDirection: 'row', gap: 8, width: '100%' },
+  btnSecundario: {
+    flex: 1,
+    backgroundColor: '#EFF6FF',
+    padding: 9,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  txtBtnSecundario: { color: '#2563EB', fontWeight: '700', fontSize: 12 },
+  btnPerigo: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  txtBtnPerigo: { color: '#EF4444', fontWeight: '700', fontSize: 12 },
   btnSalvar: {
     backgroundColor: '#2563EB',
     flexDirection: 'row',
