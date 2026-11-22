@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,13 +9,8 @@ import { initDatabase, buscarPerfilProfissional } from './src/database/db';
 import AgendaScreen from './src/screens/AgendaScreen';
 import PacientesScreen from './src/screens/PacientesScreen';
 import NovaSessaoScreen from './src/screens/NovaSessaoScreen';
+import RelatoriosScreen from './src/screens/RelatoriosScreen';
 import PerfilModal from './src/components/PerfilModal';
-
-const BackupScreen = () => (
-  <View style={styles.center}>
-    <Text style={styles.text}>4. Backup e Relatórios</Text>
-  </View>
-);
 
 const Tab = createBottomTabNavigator();
 
@@ -54,7 +49,7 @@ function MinhasAbas({ perfil, onAbrirPerfil }) {
             Agenda: 'calendar-outline',
             Pacientes: 'people-outline',
             'Nova Sessão': 'add-circle-outline',
-            Backup: 'cloud-upload-outline',
+            'Relatórios': 'document-text-outline',
           };
           return <Ionicons name={icons[route.name]} size={size} color={color} />;
         },
@@ -63,7 +58,7 @@ function MinhasAbas({ perfil, onAbrirPerfil }) {
       <Tab.Screen name="Agenda" component={AgendaScreen} />
       <Tab.Screen name="Pacientes" component={PacientesScreen} />
       <Tab.Screen name="Nova Sessão" component={NovaSessaoScreen} />
-      <Tab.Screen name="Backup" component={BackupScreen} />
+      <Tab.Screen name="Relatórios" component={RelatoriosScreen} />
     </Tab.Navigator>
   );
 }
@@ -99,8 +94,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  text: { fontSize: 18, fontWeight: '600', color: '#1E293B' },
   btnPerfilTopo: { marginRight: 16 },
   avatarTopo: {
     width: 34,
